@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
@@ -7,7 +6,16 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import { Zap, LogIn, UserPlus } from 'lucide-react';
 
-const AuthView = ({ setCurrentUser, navigateTo, auth }) => {
+import {
+  auth,
+  db,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  collection,
+  addDoc
+} from '../lib/firebase';
+
+const AuthView = ({ setCurrentUser, navigateTo }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -18,38 +26,32 @@ const AuthView = ({ setCurrentUser, navigateTo, auth }) => {
     e.preventDefault();
     setIsLoading(true);
 
-    // TEMPORAL: Simulación hasta que Firebase esté configurado
-    if (!auth.createUserWithEmailAndPassword || !auth.signInWithEmailAndPassword) {
-      toast({
-        title: "Funcionalidad no disponible",
-        description: "La configuración de Firebase no está completa. Usando simulación.",
-        variant: "destructive"
-      });
-      // Simular un login/registro exitoso para desarrollo
-      const mockUser = { uid: email, email: email, displayName: email.split('@')[0] };
-      setCurrentUser(mockUser);
-      navigateTo('home');
-      setIsLoading(false);
-      return;
-    }
-    // FIN TEMPORAL
-
     try {
       let userCredential;
+
       if (isLogin) {
-        userCredential = await auth.signInWithEmailAndPassword(email, password);
+        userCredential = await signInWithEmailAndPassword(auth, email, password);
         toast({ title: "¡Bienvenido de nuevo!", description: "Inicio de sesión exitoso." });
       } else {
-        userCredential = await auth.createUserWithEmailAndPassword(email, password);
+        userCredential = await createUserWithEmailAndPassword(auth, email, password);
+
+        // Guardar en Firestore
+        await addDoc(collection(db, "usuarios"), {
+          uid: userCredential.user.uid,
+          email: userCredential.user.email,
+          creadoEn: new Date()
+        });
+
         toast({ title: "¡Cuenta Creada!", description: "Registro exitoso. ¡Bienvenido!" });
       }
+
       setCurrentUser(userCredential.user);
       navigateTo('home');
     } catch (error) {
       toast({
         title: isLogin ? "Error al iniciar sesión" : "Error al registrarse",
         description: error.message,
-        variant: "destructive",
+        variant: "destructive"
       });
     } finally {
       setIsLoading(false);
@@ -68,7 +70,9 @@ const AuthView = ({ setCurrentUser, navigateTo, auth }) => {
             <Zap className="w-10 h-10 text-white" />
           </div>
           <h1 className="text-4xl font-bold text-white">Tutor de Python</h1>
-          <p className="text-blue-200 mt-1">{isLogin ? 'Inicia sesión para continuar tu aventura' : 'Crea una cuenta para empezar'}</p>
+          <p className="text-blue-200 mt-1">
+            {isLogin ? 'Inicia sesión para continuar tu aventura' : 'Crea una cuenta para empezar'}
+          </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -101,7 +105,12 @@ const AuthView = ({ setCurrentUser, navigateTo, auth }) => {
             disabled={isLoading}
             className="w-full bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white font-semibold py-3 text-lg rounded-lg shadow-md transition-transform hover:scale-105"
           >
-            {isLoading ? 'Procesando...' : (isLogin ? <><LogIn className="mr-2 h-5 w-5" /> Iniciar Sesión</> : <><UserPlus className="mr-2 h-5 w-5" /> Registrarse</>)}
+            {isLoading
+              ? 'Procesando...'
+              : isLogin
+              ? <><LogIn className="mr-2 h-5 w-5" /> Iniciar Sesión</>
+              : <><UserPlus className="mr-2 h-5 w-5" /> Registrarse</>
+            }
           </Button>
         </form>
         <p className="mt-8 text-center text-sm">
